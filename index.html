@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>極限集中ログ - 一万光年</title>
+    <style>
+        :root {
+            --bg: #000; --accent: #d4af37; --text: #ffffff;
+            --glass: rgba(255, 255, 255, 0.1); --trans: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+            background: #000; color: #fff; height: 100vh; overflow: hidden; transition: var(--trans);
+        }
+        #bg-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; transition: var(--trans); }
+        .screen { display: none; height: 100%; flex-direction: column; align-items: center; justify-content: flex-start; padding: 40px 20px; text-align: center; overflow-y: auto; }
+        .active { display: flex; }
+
+        .title-label { font-size: 24px; font-weight: 800; color: var(--accent); margin-top: 20px; text-shadow: 0 0 20px rgba(212,175,55,0.4); }
+        .lv-badge { font-size: 12px; opacity: 0.6; letter-spacing: 3px; margin-bottom: 15px; }
+        .progress-container { width: 80%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; margin: 10px 0; overflow: hidden; }
+        #progress-bar { height: 100%; background: var(--accent); width: 0%; transition: 1.5s ease-out; box-shadow: 0 0 15px var(--accent); }
+        
+        .main-stats { display: flex; gap: 20px; margin: 15px 0; font-size: 13px; }
+        .stat-item b { color: var(--accent); font-size: 16px; }
+
+        .btn-main { background: #fff; color: #000; border: none; padding: 16px 60px; border-radius: 50px; font-weight: 900; font-size: 18px; cursor: pointer; margin: 20px 0; transition: 0.3s; }
+        .btn-main:active { transform: scale(0.92); }
+
+        .btn-group { display: flex; gap: 10px; margin-bottom: 30px; }
+        .btn-sub { background: var(--glass); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 10px 20px; border-radius: 12px; cursor: pointer; backdrop-filter: blur(15px); font-size: 12px; }
+
+        .chart-container { width: 90%; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); }
+        .chart-title { font-size: 11px; opacity: 0.5; margin-bottom: 10px; text-align: left; letter-spacing: 1px; }
+        .bars { display: flex; align-items: flex-end; justify-content: space-between; height: 80px; gap: 8px; }
+        .bar-wrapper { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .bar { width: 100%; background: rgba(255,255,255,0.2); border-radius: 3px; transition: height 1s ease; position: relative; }
+        .bar.today { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+        .bar-label { font-size: 8px; opacity: 0.4; }
+
+        .timer-display { font-size: 85px; font-family: 'Helvetica Neue', sans-serif; margin: 40px 0; font-weight: 200; font-variant-numeric: tabular-nums; }
+        #phaseLabel { letter-spacing: 10px; font-weight: 800; font-size: 12px; opacity: 0.5; }
+
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 88%; max-height: 80%; background: rgba(10,10,10,0.98); border: 1px solid rgba(212,175,55,0.3); border-radius: 30px; z-index: 100; overflow-y: auto; padding: 30px; backdrop-filter: blur(25px); }
+        .modal-item { padding: 14px 5px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px; display: flex; justify-content: space-between; }
+        .locked { opacity: 0.2; }
+    </style>
+</head>
+<body>
+    <div id="bg-layer"></div>
+
+    <div id="home-screen" class="screen active">
+        <div id="titleLabel" class="title-label">読み込み中...</div>
+        <div id="lvBadge" class="lv-badge">LEVEL 0</div>
+        <div class="progress-container"><div id="progress-bar"></div></div>
+        <div id="nextLabel" style="font-size: 11px; opacity: 0.5; margin-bottom: 5px;">次まで あと --</div>
+        <div class="main-stats">
+            <div class="stat-item">今日: <b id="stat-today">0時間0分</b></div>
+            <div class="stat-item">累計: <b id="stat-total">0時間0分</b></div>
+        </div>
+        <button class="btn-main" onclick="startFocus()">集中を開始する</button>
+        <div class="btn-group">
+            <button class="btn-sub" onclick="openRoadmap()">称号一覧</button>
+            <button class="btn-sub" onclick="openBgPicker()">背景変更</button>
+        </div>
+        <div class="chart-container">
+            <div class="chart-title">過去7日間の集中記録</div>
+            <div class="bars" id="chart-bars"></div>
+        </div>
+    </div>
+
+    <div id="focus-screen" class="screen">
+        <div style="margin-top: 60px;">
+            <div id="phaseLabel">集中</div>
+            <div id="timerDisplay" class="timer-display">25:00</div>
+            <div class="btn-group" style="justify-content: center;">
+                <button id="pauseBtn" class="btn-sub" onclick="togglePause()">一時停止</button>
+                <button class="btn-sub" onclick="stopStudy()">中断する</button>
+            </div>
+            <button class="btn-sub" style="margin-top: 20px; opacity: 0.5;" onclick="toggleFocusTheme()">背景 白/黒</button>
+        </div>
+    </div>
+
+    <div id="roadmap-modal" class="modal">
+        <h3 style="color:var(--accent); margin-top:0;">集中ロードマップ</h3>
+        <div id="roadmap-list"></div>
+        <button class="btn-sub" style="margin-top:25px; width:100%; padding:15px;" onclick="closeModals()">閉じる</button>
+    </div>
+
+    <div id="bg-modal" class="modal">
+        <h3 style="color:var(--accent); margin-top:0;">背景を選択</h3>
+        <div class="bg-grid" id="bg-list" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;"></div>
+        <button class="btn-sub" style="margin-top:25px; width:100%; padding:15px;" onclick="closeModals()">閉じる</button>
+    </div>
+
+    <script>
+        // 内蔵音源 (プーという電子音)
+        const beepSound = "data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTdvT18AZHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw";
+
+        function playBeep() {
+            const audio = new Audio(beepSound);
+            audio.play().catch(() => {});
+        }
+
+        let totalMins = parseFloat(localStorage.getItem('totalMins')) || 0;
+        let todayMins = parseFloat(localStorage.getItem('todayMins')) || 0;
+        let dailyLogs = JSON.parse(localStorage.getItem('dailyLogs')) || {};
+        let selectedBgId = parseInt(localStorage.getItem('selectedBgId')) || 1;
+        let isAwakened = localStorage.getItem('isAwakened') === 'true';
+
+        const todayStr = new Date().toLocaleDateString();
+        if (localStorage.getItem('lastDate') !== todayStr) {
+            todayMins = 0;
+            localStorage.setItem('lastDate', todayStr);
+        }
+
+        const titles = ["", "机に向かった開拓者", "椅子の重し", "画面を見つめる置物", "三日坊主の第一歩", "姿勢だけは一丁前", "集中力の迷子", "形から入るタイプ", "まだ椅子に座ってる奇跡", "睡魔の親友", "集中してるフリの達人", "意外と続いてて草", "そろそろ飽きる頃", "意識高い系の末端", "独り言が増えてきた人", "修行僧の卵", "凡才の限界突破", "静寂を楽しむ変人", "一端の努力家", "鉛筆を武器に変えた者", "集中モードの入り口", "周りの音が消えた男", "忍耐の化身", "鋼の尻を持つ者", "睡魔を殴り倒した男", "ゾーンの端っこ", "静かなる破壊神", "知識を喰らう獣", "効率の鬼", "孤独を愛する怪物", "思考の超特急", "論理の支配者", "深淵を覗く秀才", "叡智の継承者", "限界を知らない知性", "思考の魔術師", "漆黒の努力家", "運命を書き換える者", "研ぎ澄まされた刃", "雑念を斬る剣豪", "思考の絶対領域", "冷徹なる計算機", "常識を置き去りにした者", "孤高の天才", "知識の独裁者", "脳細胞の革命家", "努力の暴走機関車", "集中力のブラックホール", "一人前", "一万光年への助走", "大気圏突入", "摩擦熱の支配者", "重力との決別", "成層圏の静寂", "青き星の観測者", "第一宇宙速度", "真空の思考", "衛星軌道の孤独", "太陽風を背に", "銀河系への招待状", "光速への挑戦者", "時間の相対性", "星間物質の漂流", "星を産む指先", "超新星の残光", "パルサーの鼓動", "中性子星の密度", "クエーサーの咆哮", "銀河中心の深淵", "次元の超越者", "暗黒物質の化身", "宇宙背景放射の囁き", "ビッグバンの再来", "エントロピーの逆流", "虚数時間の旅人", "特異点に触れる者", "平行世界の交差点", "因果律の破壊者", "虚無の支配者", "絶対零度の精神", "星々を編む者", "銀河の胎動", "星冠を授かりし者", "万物の俯瞰者", "真理の目撃者", "運命の調律師", "光なき場所の光", "概念の具現体", "存在の証明", "神の領域の入り口", "神話の語り手", "天界の守護者", "聖域の主", "事象の地平面", "静止した時間", "銀河の脈動", "虚無を編む者", "神の不在を知る者", "全知全能の神", "一万光年"];
+
+        function formatTime(mins) {
+            const h = Math.floor(mins / 60);
+            const m = Math.floor(mins % 60);
+            return `${h}時間${m}分`;
+        }
+
+        function getLv(mins) { return Math.min(100, Math.floor(Math.pow(mins / 0.3, 1/3)) + 1); }
+        function getMinsForLv(lv) { return 0.3 * Math.pow(lv - 1, 3); }
+
+        function getBgCss(lv) {
+            if (lv < 5) return "linear-gradient(#000, #111)";
+            if (lv < 50) return `linear-gradient(${lv*10}deg, hsl(${lv*7}, 30%, 15%), #000)`;
+            if (lv >= 50 && lv < 90) return "linear-gradient(150deg, #1b2735 0%, #090a0f 100%)";
+            return "linear-gradient(225deg, #2C3E50 0%, #000 100%)";
+        }
+
+        function updateHome() {
+            const lv = getLv(totalMins);
+            document.getElementById('titleLabel').textContent = titles[lv];
+            document.getElementById('lvBadge').textContent = `第 ${lv} 段階`;
+            document.getElementById('stat-today').textContent = formatTime(todayMins);
+            document.getElementById('stat-total').textContent = formatTime(totalMins);
+
+            const cur = getMinsForLv(lv), nxt = getMinsForLv(lv + 1);
+            document.getElementById('progress-bar').style.width = (lv >= 100 ? 100 : (totalMins - cur) / (nxt - cur) * 100) + "%";
+            document.getElementById('nextLabel').textContent = lv >= 100 ? "極限到達" : `次まで あと ${formatTime(nxt - totalMins)}`;
+            document.getElementById('bg-layer').style.background = getBgCss(selectedBgId);
+            renderChart();
+        }
+
+        function renderChart() {
+            const container = document.getElementById('chart-bars');
+            container.innerHTML = "";
+            const days = [];
+            for(let i=6; i>=0; i--) {
+                const d = new Date(); d.setDate(d.getDate() - i);
+                days.push(d.toLocaleDateString());
+            }
+            const maxMins = Math.max(...days.map(d => (d === todayStr ? todayMins : (dailyLogs[d] || 0))), 60);
+            days.forEach(d => {
+                const val = (d === todayStr ? todayMins : (dailyLogs[d] || 0));
+                const h = (val / maxMins) * 100;
+                const wrapper = document.createElement('div');
+                wrapper.className = 'bar-wrapper';
+                wrapper.innerHTML = `<div class="bar ${d === todayStr ? 'today' : ''}" style="height:${h}%"></div><div class="bar-label">${d.split('/')[2]}日</div>`;
+                container.appendChild(wrapper);
+            });
+        }
+
+        let timeLeft, timerId, isPaused, isBreak, focusTheme = 'black';
+
+        function startFocus() {
+            playBeep();
+            isBreak = false; timeLeft = 25 * 60; isPaused = false;
+            document.getElementById('home-screen').classList.remove('active');
+            document.getElementById('focus-screen').classList.add('active');
+            document.getElementById('phaseLabel').textContent = "集中";
+            applyFocusTheme(); runTimer();
+        }
+
+        function runTimer() {
+            if (timerId) clearInterval(timerId);
+            timerId = setInterval(() => {
+                if (!isPaused) {
+                    timeLeft--;
+                    const m = Math.floor(timeLeft / 60), s = timeLeft % 60;
+                    document.getElementById('timerDisplay').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+                    if (timeLeft <= 0) {
+                        playBeep();
+                        if (!isBreak) { 
+                            addTime(25); alert("25分完了！休憩しましょう");
+                            isBreak = true; timeLeft = 5 * 60; 
+                            document.getElementById('phaseLabel').textContent = "休憩"; applyFocusTheme();
+                        } else { alert("休憩終了！"); startFocus(); }
+                    }
+                }
+            }, 1000);
+        }
+
+        function addTime(mins) {
+            totalMins += mins; todayMins += mins;
+            dailyLogs[todayStr] = todayMins;
+            localStorage.setItem('totalMins', totalMins);
+            localStorage.setItem('todayMins', todayMins);
+            localStorage.setItem('dailyLogs', JSON.stringify(dailyLogs));
+            if (getLv(totalMins) >= 50 && !isAwakened) {
+                isAwakened = true; localStorage.setItem('isAwakened', 'true');
+                alert("レベル50到達。一万光年への助走が始まりました。");
+            }
+        }
+
+        function stopStudy() {
+            clearInterval(timerId);
+            if (!isBreak) addTime((25 * 60 - timeLeft) / 60);
+            document.getElementById('focus-screen').classList.remove('active');
+            document.getElementById('home-screen').classList.add('active');
+            updateHome();
+        }
+
+        function togglePause() { isPaused = !isPaused; document.getElementById('pauseBtn').textContent = isPaused ? "再開" : "一時停止"; }
+        function toggleFocusTheme() { focusTheme = (focusTheme === 'black' ? 'white' : 'black'); applyFocusTheme(); }
+        function applyFocusTheme() {
+            const bg = document.getElementById('bg-layer');
+            if(isBreak) { bg.style.background = getBgCss(selectedBgId); document.body.style.color = "#fff"; }
+            else { bg.style.background = (focusTheme === 'black' ? "#000" : "#fff"); document.body.style.color = (focusTheme === 'black' ? "#fff" : "#000"); }
+        }
+
+        function openRoadmap() {
+            const list = document.getElementById('roadmap-list'); list.innerHTML = "";
+            const cl = getLv(totalMins);
+            const max = isAwakened ? 100 : 50;
+            for (let i = 1; i <= max; i++) {
+                const item = document.createElement('div');
+                item.className = `modal-item ${i > cl ? 'locked' : ''}`;
+                item.innerHTML = `<span>Lv.${i}</span> <span>${i <= cl ? titles[i] : '？？？'}</span>`;
+                list.appendChild(item);
+            }
+            document.getElementById('roadmap-modal').style.display = 'block';
+        }
+
+        function openBgPicker() {
+            const list = document.getElementById('bg-list'); list.innerHTML = "";
+            const cl = getLv(totalMins);
+            [1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].forEach(i => {
+                if (cl >= i) {
+                    const chip = document.createElement('div');
+                    chip.style.height = "60px"; chip.style.borderRadius = "10px"; chip.style.border = "1px solid #444";
+                    chip.style.background = getBgCss(i); chip.style.cursor = "pointer";
+                    chip.onclick = () => { selectedBgId = i; localStorage.setItem('selectedBgId', i); updateHome(); closeModals(); };
+                    list.appendChild(chip);
+                }
+            });
+            document.getElementById('bg-modal').style.display = 'block';
+        }
+
+        function closeModals() { document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); }
+        updateHome();
+    </script>
+<script>
+
+/* ===============================
+追加機能パック（既存コードは一切変更しない）
+1. 通知
+2. オフライン化
+3. 自己ベストランキング
+=============================== */
+
+/* 通知許可 */
+if ("Notification" in window) {
+Notification.requestPermission();
+}
+
+function studyNotify(msg){
+if(Notification.permission==="granted"){
+new Notification(msg);
+}
+}
+
+/* alertを拡張（既存コード変更しないため） */
+const originalAlert = window.alert;
+
+window.alert = function(msg){
+
+originalAlert(msg);
+
+if(msg.includes("25分完了")){
+studyNotify("25分終了！休憩しましょう");
+}
+
+if(msg.includes("休憩終了")){
+studyNotify("休憩終了！集中開始");
+}
+
+};
+
+
+/* ===============================
+自己ベストランキング
+=============================== */
+
+function renderBest(){
+
+let best = parseFloat(localStorage.getItem("bestStudy")) || 0;
+
+if(typeof todayMins !== "undefined"){
+
+if(todayMins > best){
+best = todayMins;
+localStorage.setItem("bestStudy",best);
+}
+
+}
+
+/* 表示エリアが無ければ作る */
+if(!document.getElementById("best-container")){
+
+const box = document.createElement("div");
+box.className="chart-container";
+box.id="best-container";
+
+box.innerHTML=`
+<div class="chart-title">自己ベスト</div>
+<div id="best-record"></div>
+`;
+
+document.querySelector("#home-screen").appendChild(box);
+
+}
+
+const el=document.getElementById("best-record");
+
+if(el){
+
+const today = typeof todayMins !== "undefined" ? todayMins : 0;
+
+function fmt(min){
+const h=Math.floor(min/60);
+const m=Math.floor(min%60);
+return h+"時間"+m+"分";
+}
+
+el.innerHTML=
+"今日："+fmt(today)+"<br>自己ベスト："+fmt(best);
+
+}
+
+}
+
+/* ホーム更新時にランキング更新 */
+const originalUpdateHome = window.updateHome;
+
+window.updateHome = function(){
+
+originalUpdateHome();
+
+renderBest();
+
+};
+
+/* 初回実行 */
+setTimeout(renderBest,500);
+
+
+/* ===============================
+オフライン化（ServiceWorker）
+=============================== */
+
+if("serviceWorker" in navigator){
+
+navigator.serviceWorker.register("sw.js");
+
+}
+
+</script>
+
+</body>
+
+</html>
